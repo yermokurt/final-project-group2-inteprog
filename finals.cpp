@@ -47,7 +47,6 @@ public:
     }
 };
 
-// New Reservation class
 class Reservation {
 public:
     Reservation(string carId, string username, string startDate, string endDate, double price, string status = "Pending")
@@ -75,6 +74,7 @@ public:
     User(string username, string password) : username(username), password(password) {}
 
     string getUsername() const { return username; }
+    string getPassword() const { return password; }
     bool login(string user, string pass) {
         return (user == username && pass == password);
     }
@@ -139,6 +139,7 @@ public:
     void filterCarsByModel(const string& keyword) const;
     void viewAllReservations() const;
     void updateReservationStatus(const string& carId, const string& username, const string& newStatus);
+    
 
     vector<Car>& getCars() { return cars; }
     vector<Reservation>& getReservations() { return reservations; }
@@ -147,13 +148,6 @@ private:
     vector<Car> cars;
     vector<Reservation> reservations;
 };
-
-void saveCarsToFile(const vector<Car>& cars);
-void loadCarsFromFile(vector<Car>& cars);
-void saveUsersToFile(const vector<User>& users);
-void loadUsersFromFile(vector<User>& users, vector<Car>& cars);
-void saveReservationsToFile(const vector<Reservation>& reservations);
-void loadReservationsFromFile(vector<Reservation>& reservations);
 
 void saveCarsToFile(const vector<Car>& cars) {
     ofstream file("cars.txt");
@@ -174,11 +168,11 @@ void loadCarsFromFile(vector<Car>& cars) {
 }
 
 void saveUsersToFile(const vector<User>& users) {
-    ofstream file("users.txt");
+    ofstream fout("users.txt");
     for (const auto& user : users) {
-        file << user.getUsername() << " " << user.getUsername() << endl;
+        fout << user.getUsername() << " " << user.getPassword() << "\n";
     }
-    file.close();
+    fout.close();
 }
 
 void loadUsersFromFile(vector<User>& users, vector<Car>& cars) {
@@ -211,6 +205,30 @@ void loadReservationsFromFile(vector<Reservation>& reservations) {
     file.close();
 }
 
+void registerUser(vector<User>& users, vector<Car>& cars) {
+    string username, password;
+
+    cout << "Enter new username: ";
+    cin >> username;
+
+    for (const auto& user : users) {
+        if (user.getUsername() == username) {
+            cout << "Username already exists. Try again.\n";
+            return;
+        }
+    }
+
+    cout << "Enter new password: ";
+    cin >> password;
+
+    users.emplace_back(username, password);
+    users.back().setCars(&cars);
+
+    saveUsersToFile(users);
+
+    cout << "Registration successful! You can now log in.\n";
+}
+
 string getCurrentDate() {
     time_t now = time(0);
     tm* ltm = localtime(&now);
@@ -218,8 +236,6 @@ string getCurrentDate() {
 }
 
 string calculateEndDate(const string& startDate, int days) {
-    // Simple date calculation (for demonstration)
-    // In a real application, you would use a proper date library
     size_t dash1 = startDate.find('-');
     size_t dash2 = startDate.find('-', dash1 + 1);
     
@@ -229,7 +245,6 @@ string calculateEndDate(const string& startDate, int days) {
     
     day += days;
     
-    // Handle month overflow (simplified)
     if (day > 30) {
         month += day / 30;
         day = day % 30;
@@ -249,7 +264,6 @@ void User::rentCar(const string& id, PricingStrategy* strategy, int days) {
             string endDate = calculateEndDate(startDate, days);
             double price = strategy->calculatePrice(days);
             
-            // Create new reservation
             reservations->emplace_back(id, username, startDate, endDate, price);
             
             car.setAvailability(false);
@@ -275,229 +289,224 @@ void Admin::viewCars() const {
     cout << string(50, '-') << endl;
     for (const auto& car : cars) {
         cout << left << setw(15) << car.getId()
-             << setw(20) << car.getModel()
-             << setw(15) << (car.getAvailability() ? "Yes" : "No") << endl;
-    }
+             << setw(20)
+<< car.getModel()
+<< setw(15) << (car.getAvailability() ? "Yes" : "No") << endl;
 }
-
-void Admin::viewAllReservations() const {
-    cout << "\nAll Reservations:\n";
-    cout << left << setw(15) << "Car ID" << setw(15) << "User" << setw(15) << "Start Date" 
-         << setw(15) << "End Date" << setw(15) << "Price" << setw(15) << "Status" << endl;
-    cout << string(90, '-') << endl;
-    
-    for (const auto& res : reservations) {
-        cout << left << setw(15) << res.getCarId()
-             << setw(15) << res.getUsername()
-             << setw(15) << res.getStartDate()
-             << setw(15) << res.getEndDate()
-             << setw(15) << res.getPrice()
-             << setw(15) << res.getStatus() << endl;
-    }
-}
-
-void Admin::updateReservationStatus(const string& carId, const string& username, const string& newStatus) {
-    for (auto& res : reservations) {
-        if (res.getCarId() == carId && res.getUsername() == username) {
-            res.setStatus(newStatus);
-            
-            // If reservation is cancelled, make the car available again
-            if (newStatus == "Cancelled") {
-                for (auto& car : cars) {
-                    if (car.getId() == carId) {
-                        car.setAvailability(true);
-                        break;
-                    }
-                }
-            }
-            
-            saveReservationsToFile(reservations);
-            saveCarsToFile(cars);
-            return;
-        }
-    }
-    throw runtime_error("Reservation not found.");
 }
 
 void Admin::updateCar(const string& id, const string& newModel) {
-    for (auto& car : cars) {
-        if (car.getId() == id) {
-            car.setModel(newModel);
-            saveCarsToFile(cars);
-            return;
-        }
-    }
-    throw runtime_error("Car ID not found.");
+for (auto& car : cars) {
+if (car.getId() == id) {
+car.setModel(newModel);
+saveCarsToFile(cars);
+cout << "Car updated successfully.\n";
+return;
+}
+}
+cout << "Car ID not found.\n";
 }
 
 void Admin::deleteCar(const string& id) {
-    for (auto it = cars.begin(); it != cars.end(); ++it) {
-        if (it->getId() == id) {
-            cars.erase(it);
-            saveCarsToFile(cars);
-            return;
-        }
-    }
-    throw runtime_error("Car ID not found.");
+auto it = remove_if(cars.begin(), cars.end(), [&](const Car& c) { return c.getId() == id; });
+if (it != cars.end()) {
+cars.erase(it, cars.end());
+saveCarsToFile(cars);
+cout << "Car deleted successfully.\n";
+} else {
+cout << "Car ID not found.\n";
+}
 }
 
 void Admin::filterCarsByModel(const string& keyword) const {
-    cout << "\nFiltered Cars (Model contains '" << keyword << "'):\n";
-    cout << left << setw(15) << "Car ID" << setw(20) << "Model" << setw(15) << "Available" << endl;
-    cout << string(50, '-') << endl;
-    for (const auto& car : cars) {
-        if (car.getModel().find(keyword) != string::npos) {
-            cout << left << setw(15) << car.getId()
-                 << setw(20) << car.getModel()
-                 << setw(15) << (car.getAvailability() ? "Yes" : "No") << endl;
-        }
-    }
+cout << "\nFiltered Cars containing "" << keyword << "":\n";
+cout << left << setw(15) << "Car ID" << setw(20) << "Model" << setw(15) << "Available" << endl;
+cout << string(50, '-') << endl;
+for (const auto& car : cars) {
+if (car.getModel().find(keyword) != string::npos) {
+cout << left << setw(15) << car.getId()
+<< setw(20) << car.getModel()
+<< setw(15) << (car.getAvailability() ? "Yes" : "No") << endl;
+}
+}
+}
+
+void Admin::viewAllReservations() const {
+cout << "\nAll Reservations:\n";
+cout << left << setw(15) << "Car ID" << setw(15) << "Username" << setw(15) << "Start Date"
+<< setw(15) << "End Date" << setw(15) << "Price" << setw(15) << "Status" << endl;
+cout << string(90, '-') << endl;
+for (const auto& res : reservations) {
+cout << left << setw(15) << res.getCarId()
+<< setw(15) << res.getUsername()
+<< setw(15) << res.getStartDate()
+<< setw(15) << res.getEndDate()
+<< setw(15) << res.getPrice()
+<< setw(15) << res.getStatus() << endl;
+}
+}
+
+void Admin::updateReservationStatus(const string& carId, const string& username, const string& newStatus) {
+for (auto& res : reservations) {
+if (res.getCarId() == carId && res.getUsername() == username) {
+res.setStatus(newStatus);
+saveReservationsToFile(reservations);
+cout << "Reservation status updated.\n";
+return;
+}
+}
+cout << "Reservation not found.\n";
+}
+
+void userMenu(User& user) {
+int choice;
+do {
+cout << "\nUser Menu:\n1. View Available Cars\n2. Rent Car\n3. View My Reservations\n4. Logout\nChoose: ";
+cin >> choice;
+if (choice == 1) {
+user.viewAvailableCars();
+} else if (choice == 2) {
+string carId;
+int days;
+cout << "Enter Car ID to rent: ";
+cin >> carId;
+cout << "Enter number of days: ";
+cin >> days;
+if (days <= 0) {
+cout << "Invalid number of days.\n";
+continue;
+}
+try {
+// For demo, we use StandardPricing always, can be extended for more strategies.
+StandardPricing strategy;
+user.rentCar(carId, &strategy, days);
+} catch (const exception& e) {
+cout << e.what() << endl;
+}
+} else if (choice == 3) {
+user.viewMyReservations();
+}
+} while (choice != 4);
+}
+
+void adminMenu(Admin& admin) {
+int choice;
+do {
+cout << "\nAdmin Menu:\n1. View Cars\n2. Add Car\n3. Update Car\n4. Delete Car\n5. Filter Cars\n6. View Reservations\n7. Update Reservation Status\n8. Logout\nChoose: ";
+cin >> choice;
+if (choice == 1) {
+admin.viewCars();
+} else if (choice == 2) {
+string id, model;
+cout << "Enter new Car ID: ";
+cin >> id;
+cout << "Enter new Car Model: ";
+cin >> model;
+admin.addCar(id, model);
+} else if (choice == 3) {
+string id, model;
+cout << "Enter Car ID to update: ";
+cin >> id;
+cout << "Enter new Model: ";
+cin >> model;
+admin.updateCar(id, model);
+} else if (choice == 4) {
+string id;
+cout << "Enter Car ID to delete: ";
+cin >> id;
+admin.deleteCar(id);
+} else if (choice == 5) {
+string keyword;
+cout << "Enter keyword to filter by model: ";
+cin >> keyword;
+admin.filterCarsByModel(keyword);
+} else if (choice == 6) {
+admin.viewAllReservations();
+} else if (choice == 7) {
+string carId, username, status;
+cout << "Enter Car ID of reservation: ";
+cin >> carId;
+cout << "Enter Username of reservation: ";
+cin >> username;
+cout << "Enter new status (Pending/Confirmed/Cancelled): ";
+cin >> status;
+admin.updateReservationStatus(carId, username, status);
+}
+} while (choice != 8);
 }
 
 int main() {
-    Admin admin;
+    vector<Car> cars;
     vector<User> users;
+    vector<Reservation> reservations;
 
-    loadCarsFromFile(admin.getCars());
-    loadUsersFromFile(users, admin.getCars());
-    loadReservationsFromFile(admin.getReservations());
-    
-    // Set reservations pointers for users
+    loadCarsFromFile(cars);
+    loadUsersFromFile(users, cars);
+    loadReservationsFromFile(reservations);
+
+    Admin admin;
+    admin.getCars() = cars;
+    admin.getReservations() = reservations;
+
     for (auto& user : users) {
-        user.setReservations(&admin.getReservations());
+        user.setReservations(&reservations);
     }
 
-    bool running = true;
-    while (running) {
-        cout << "\nSelect Role:\n1. Admin\n2. User\n3. Exit\nChoice: ";
-        int role;
-        cin >> role;
+    int mainOption;
+    do {
+        cout << "\nWelcome to Car Rental System\n";
+        cout << "1. Login as User\n";
+        cout << "2. Login as Admin\n";
+        cout << "3. Exit\n";
+        cout << "Choose: ";
+        cin >> mainOption;
 
-        if (role == 1) {
-            string password;
-            cout << "Enter Admin Password: ";
-            cin >> password;
+        if (mainOption == 1) {
+            int userOption;
+            do {
+                cout << "\nUser Menu:\n";
+                cout << "1. Register\n";
+                cout << "2. Login\n";
+                cout << "3. Back\n";
+                cout << "Choose: ";
+                cin >> userOption;
 
-            if (password == "group2finalproject") {
-                bool adminLoggedIn = true;
-                while (adminLoggedIn) {
-                    cout << "\nAdmin Menu:\n1. Add Car\n2. View Cars\n3. Update Car\n4. Delete Car\n5. Filter Cars\n6. View Reservations\n7. Update Reservation Status\n8. Logout\nChoice: ";
-                    int choice;
-                    cin >> choice;
-
-                    try {
-                        if (choice == 1) {
-                            string id, model;
-                            cout << "Enter Car ID: ";
-                            cin >> id;
-                            cout << "Enter Car Model: ";
-                            cin >> model;
-                            admin.addCar(id, model);
-                        } else if (choice == 2) {
-                            admin.viewCars();
-                        } else if (choice == 3) {
-                            admin.viewCars();
-                            string id, newModel;
-                            cout << "Enter Car ID to Update: ";
-                            cin >> id;
-                            cout << "Enter New Car Model: ";
-                            cin >> newModel;
-                            admin.updateCar(id, newModel);
-                        } else if (choice == 4) {
-                            admin.viewCars();
-                            string id;
-                            cout << "Enter Car ID to Delete: ";
-                            cin >> id;
-                            admin.deleteCar(id);
-                        } else if (choice == 5) {
-                            string keyword;
-                            cout << "Enter keyword to filter by model: ";
-                            cin >> keyword;
-                            admin.filterCarsByModel(keyword);
-                        } else if (choice == 6) {
-                            admin.viewAllReservations();
-                        } else if (choice == 7) {
-                            admin.viewAllReservations();
-                            string carId, username, newStatus;
-                            cout << "Enter Car ID: ";
-                            cin >> carId;
-                            cout << "Enter Username: ";
-                            cin >> username;
-                            cout << "Enter New Status (Approved/Cancelled/Completed): ";
-                            cin >> newStatus;
-                            admin.updateReservationStatus(carId, username, newStatus);
-                        } else if (choice == 8) {
-                            adminLoggedIn = false;
-                        } else {
-                            cout << "Invalid choice.\n";
+                if (userOption == 1) {
+                    registerUser(users, cars);
+                } else if (userOption == 2) {
+                    string username, password;
+                    cout << "Username: ";
+                    cin >> username;
+                    cout << "Password: ";
+                    cin >> password;
+                    bool found = false;
+                    for (auto& user : users) {
+                        if (user.login(username, password)) {
+                            found = true;
+                            cout << "Login successful.\n";
+                            user.setReservations(&reservations);
+                            userMenu(user);
+                            break;
                         }
-                    } catch (const exception& e) {
-                        cout << "Error: " << e.what() << endl;
+                    }
+                    if (!found) {
+                        cout << "Invalid credentials.\n";
                     }
                 }
+            } while (userOption != 3);
+
+        } else if (mainOption == 2) {
+            string adminPass;
+            cout << "Enter admin password: ";
+            cin >> adminPass;
+            if (adminPass == "group2finalproject") {
+                cout << "Admin login successful.\n";
+                adminMenu(admin);
             } else {
-                cout << "Invalid password.\n";
+                cout << "Invalid admin password.\n";
             }
-        } else if (role == 2) {
-            string username, password;
-            cout << "Enter username: ";
-            cin >> username;
-            cout << "Enter password: ";
-            cin >> password;
-            bool loggedIn = false;
-            for (User& user : users) {
-                if (user.login(username, password)) {
-                    loggedIn = true;
-                    bool userMenu = true;
-                    while (userMenu) {
-                        cout << "\nUser Menu:\n1. View Available Cars\n2. Rent a Car\n3. View My Reservations\n4. Logout\nChoice: ";
-                        int choice;
-                        cin >> choice;
-
-                        try {
-                            if (choice == 1) {
-                                user.viewAvailableCars();
-                            } else if (choice == 2) {
-                                user.viewAvailableCars();
-                                string carId;
-                                int days, pricingChoice;
-                                cout << "Enter Car ID to Rent: ";
-                                cin >> carId;
-                                cout << "Enter number of days: ";
-                                cin >> days;
-                                cout << "Choose pricing strategy (1 = Standard, 2 = Premium): ";
-                                cin >> pricingChoice;
-                                unique_ptr<PricingStrategy> strategy;
-                                if (pricingChoice == 1) {
-                                    strategy = make_unique<StandardPricing>();
-                                } else if (pricingChoice == 2) {
-                                    strategy = make_unique<PremiumPricing>();
-                                } else {
-                                    throw runtime_error("Invalid pricing strategy.");
-                                }
-                                user.rentCar(carId, strategy.get(), days);
-                            } else if (choice == 3) {
-                                user.viewMyReservations();
-                            } else if (choice == 4) {
-                                userMenu = false;
-                            } else {
-                                cout << "Invalid choice.\n";
-                            }
-                        } catch (const exception& e) {
-                            cout << "Error: " << e.what() << endl;
-                        }
-                    }
-                    break;
-                }
-            }
-            if (!loggedIn) {
-                cout << "Invalid username or password.\n";
-            }
-        } else if (role == 3) {
-            running = false;
-        } else {
-            cout << "Invalid role selection.\n";
         }
-    }
+    } while (mainOption != 3);
+
     return 0;
-}
+};
