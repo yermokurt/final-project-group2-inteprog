@@ -170,6 +170,7 @@ void User::viewAvailableCars() const {
     }
 }
 
+// ...existing code...
 void User::viewMyReservations() const {
     cout << "\nMy Reservations:\n";
     cout << left << setw(15) << "Car ID" << setw(15) << "Start Date" << setw(15) << "End Date"
@@ -177,9 +178,14 @@ void User::viewMyReservations() const {
     cout << string(90, '-') << endl;
 
     bool found = false;
-    for (const auto& res : *reservations) {
+    for (auto& res : *reservations) {
         if (res.getUsername() == username) {
             found = true;
+            // If status is Cancelled, set payment status to Cancelled as well
+            if (toUpper(res.getStatus()) == "CANCELLED" && res.getPaymentStatus() != "Cancelled") {
+                res.setPaymentStatus("Cancelled");
+                saveReservationsToFile(*reservations);
+            }
             cout << left << setw(15) << res.getCarId()
                  << setw(15) << res.getStartDate()
                  << setw(15) << res.getEndDate()
@@ -314,7 +320,7 @@ void cancelReservationWithPrompt(User& user, vector<Car>& cars) {
 // --- Admin Class with User Management ---
 class Admin {
 public:
-    Admin() {}
+    Admin() : reservations(nullptr) {}
 
     void addCar(const string& id, const string& model, const string& plateNumber);
     void viewCars() const;
@@ -327,11 +333,13 @@ public:
     void deleteUser(vector<User>& users, const string& username);
 
     vector<Car>& getCars() { return cars; }
-    vector<Reservation>& getReservations() { return reservations; }
+    void setReservations(vector<Reservation>* resList) { reservations = resList; }
+    vector<Reservation>& getReservations() { return *reservations; }
+    const vector<Reservation>& getReservations() const { return *reservations; }
 
 private:
     vector<Car> cars;
-    vector<Reservation> reservations;
+    vector<Reservation>* reservations; // pointer to global reservations
 };
 
 // --- File I/O Updated for New Fields ---
@@ -498,30 +506,124 @@ void User::rentCar(const string& id, PricingStrategy* strategy, int days, vector
     saveReservationsToFile(*reservations);
 }
 
+// ...existing code...
 void rentCarWithValidation(User& user, vector<Car>& carsVec) {
     while (true) {
         string carId;
         cout << "Enter Car ID to rent (or 0 to cancel): ";
-        cin >> carId;
-        if (carId == "0") return; // allow user to cancel
+        getline(cin >> ws, carId);
+
+        if (carId == "0") return;
+
+        if (carId.empty() || carId.find(' ') != string::npos) {
+            cout << "Invalid input. Please enter a single Car ID or 0 to cancel.\n";
+            continue;
+        }
 
         string idUpper = toUpper(carId);
 
         // Check if Car ID exists and is available
-        auto carIt = find_if(carsVec.begin(), carsVec.end(), [&](const Car& c) { return toUpper(c.getId()) == idUpper && c.isAvailable(); });
+        auto carIt = find_if(
+            carsVec.begin(), carsVec.end(),
+            [&](const Car& c) { return toUpper(c.getId()) == idUpper && c.isAvailable(); }
+        );
         if (carIt == carsVec.end()) {
             cout << "Car ID not found or not available. Please enter a valid Car ID.\n";
-            continue; // ask again
-        }
-
-        int days = getNumericInput("Enter number of days: ");
-        if (days <= 0) {
-            cout << "Invalid number of days.\n";
             continue;
         }
+
+        string startDate, endDate;
+        int days = 1;
+
+        // Lambda for date validation
+        auto isValidDate = [](const string& date) {
+            if (date.length() != 10) return false;
+            if (date[4] != '-' || date[7] != '-') return false;
+            for (int i = 0; i < 10; ++i) {
+                if (i == 4 || i == 7) continue;
+                if (!isdigit(date[i])) return false;
+            }
+            return true;
+        };
+
+        // Ask for start date until valid
+        while (true) {
+            cout << "Enter start date: ";
+            cin >> startDate;
+            if (!isValidDate(startDate)) {
+                cout << "Invalid date format. Please use YYYY-MM-DD.\n";
+                continue;
+            }
+            break;
+        }
+
+        // Ask for end date until valid and after start date
+        while (true) {
+            cout << "Enter end date: ";
+            cin >> endDate;
+            if (!isValidDate(endDate)) {
+                cout << "Invalid date format. Please use YYYY-MM-DD.\n";
+                continue;
+            }
+
+            // Calculate days and check logic
+            int days = 1;
+            try {
+                size_t dash1 = startDate.find('-');
+                size_t dash2 = startDate.find('-', dash1 + 1);
+                int startYear = stoi(startDate.substr(0, dash1));
+                int startMonth = stoi(startDate.substr(dash1 + 1, dash2 - dash1 - 1));
+                int startDay = stoi(startDate.substr(dash2 + 1));
+
+                dash1 = endDate.find('-');
+                dash2 = endDate.find('-', dash1 + 1);
+                int endYear = stoi(endDate.substr(0, dash1));
+                int endMonth = stoi(endDate.substr(dash1 + 1, dash2 - dash1 - 1));
+                int endDay = stoi(endDate.substr(dash2 + 1));
+
+                days = (endYear - startYear) * 360 + (endMonth - startMonth) * 30 + (endDay - startDay) + 1;
+            } catch (...) {
+                cout << "Invalid date format. Please use YYYY-MM-DD.\n";
+                continue;
+            }
+
+            if (days <= 0) {
+                cout << "End date must be after start date.\n";
+                continue; // ask for end date again
+            }
+            break; // valid end date
+        }
+
         try {
             StandardPricing strategy;
-            user.rentCar(carId, &strategy, days, carsVec);
+            if (isReservationConflict(*user.getReservations(), idUpper, startDate, endDate)) {
+                cout << "Reservation conflict: Car is already booked for these dates.\n";
+                return;
+            }
+            int days = 1;
+            size_t dash1 = startDate.find('-');
+            size_t dash2 = startDate.find('-', dash1 + 1);
+            int startYear = stoi(startDate.substr(0, dash1));
+            int startMonth = stoi(startDate.substr(dash1 + 1, dash2 - dash1 - 1));
+            int startDay = stoi(startDate.substr(dash2 + 1));
+
+            dash1 = endDate.find('-');
+            dash2 = endDate.find('-', dash1 + 1);
+            int endYear = stoi(endDate.substr(0, dash1));
+            int endMonth = stoi(endDate.substr(dash1 + 1, dash2 - dash1 - 1));
+            int endDay = stoi(endDate.substr(dash2 + 1));
+
+            days = (endYear - startYear) * 360 + (endMonth - startMonth) * 30 + (endDay - startDay) + 1;
+
+            double price = strategy.calculatePrice(days);
+
+            user.getReservations()->emplace_back(idUpper, user.getUsername(), startDate, endDate, price, "Pending");
+            carIt->setStatus("Reserved");
+            saveCarsToFile(carsVec);
+            cout << "Reservation request submitted. Awaiting admin approval.\n";
+            user.logAction("User " + user.getUsername() + " requested reservation for car ID " + idUpper + " from " + startDate + " to " + endDate + ". Price: $" + to_string(price));
+
+            saveReservationsToFile(*user.getReservations());
         } catch (const exception& e) {
             cout << e.what() << endl;
         }
@@ -628,7 +730,7 @@ void Admin::viewAllReservations() const {
     cout << left << setw(15) << "Car ID" << setw(15) << "Username" << setw(15) << "Start Date"
          << setw(15) << "End Date" << setw(15) << "Price" << setw(15) << "Status" << setw(15) << "Payment" << endl;
     cout << string(105, '-') << endl;
-    for (const auto& res : reservations) {
+    for (const auto& res : *reservations) { // <-- dereference pointer here
         cout << left << setw(15) << res.getCarId()
              << setw(15) << res.getUsername()
              << setw(15) << res.getStartDate()
@@ -711,9 +813,9 @@ int getNumericInputInRange(const string& prompt, int min, int max) {
     int value;
     while (true) {
         cout << prompt;
-        cin >> input;
-        bool isNumeric = !input.empty() && all_of(input.begin(), input.end(), ::isdigit);
-        if (isNumeric) {
+        getline(cin >> ws, input); // Read the whole line, skip leading whitespace
+        // Check if input is a single number (no spaces, all digits)
+        if (!input.empty() && all_of(input.begin(), input.end(), ::isdigit)) {
             value = stoi(input);
             if (value >= min && value <= max) {
                 break;
@@ -815,6 +917,7 @@ void adminMenu(Admin& admin, vector<User>& users, vector<Reservation>& reservati
             admin.filterCarsByModel(keyword);
         } else if (choice == 6) {
             admin.viewAllReservations();
+        // ...existing code...
         } else if (choice == 7) {
             cout << "\nPending Reservation Requests:\n";
             cout << left << setw(15) << "Car ID"
@@ -825,6 +928,7 @@ void adminMenu(Admin& admin, vector<User>& users, vector<Reservation>& reservati
                  << setw(15) << "Status"
                  << setw(15) << "Payment" << endl;
             cout << string(105, '-') << endl;
+            vector<string> pendingCarIds;
             bool found = false;
             for (const auto& res : reservations) {
                 if (res.getStatus() == "Pending") {
@@ -836,6 +940,7 @@ void adminMenu(Admin& admin, vector<User>& users, vector<Reservation>& reservati
                          << setw(15) << res.getPrice()
                          << setw(15) << res.getStatus()
                          << setw(15) << res.getPaymentStatus() << endl;
+                    pendingCarIds.push_back(toUpper(res.getCarId()));
                 }
             }
             if (!found) {
@@ -843,8 +948,16 @@ void adminMenu(Admin& admin, vector<User>& users, vector<Reservation>& reservati
                 continue;
             }
             string carId, username, status;
-            cout << "Enter Car ID of reservation: ";
-            cin >> carId;
+            // Only accept Car ID that is in pending reservations
+            while (true) {
+                cout << "Enter Car ID of reservation: ";
+                cin >> carId;
+                if (find(pendingCarIds.begin(), pendingCarIds.end(), toUpper(carId)) != pendingCarIds.end()) {
+                    break;
+                } else {
+                    cout << "Car ID not found in pending reservations. Please try again.\n";
+                }
+            }
             cout << "Enter Username of reservation: ";
             cin >> username;
             cout << "Enter new status (Pending/Confirmed/Cancelled): ";
@@ -852,7 +965,8 @@ void adminMenu(Admin& admin, vector<User>& users, vector<Reservation>& reservati
             admin.updateReservationStatus(carId, username, status, cars, reservations);
             cars = admin.getCars();
             for (auto& user : users) user.setCars(&cars);
-        } else if (choice == 8) {
+        }
+        else if (choice == 8) {
             admin.viewUsers(users);
         } else if (choice == 9) {
             // Enhanced: Loop for multiple user deletions
@@ -950,11 +1064,10 @@ int main() {
             saveCarsToFile(cars);
         }
         // Use Singleton for Admin
-        AdminSingleton* adminSingleton = AdminSingleton::getInstance();
-        Admin& admin = adminSingleton->getAdmin();
-        admin.getCars() = cars;
-        admin.getReservations() = reservations;
-
+       AdminSingleton* adminSingleton = AdminSingleton::getInstance();
+Admin& admin = adminSingleton->getAdmin();
+admin.getCars() = cars;
+admin.setReservations(&reservations); // <-- Use this line
         for (auto& user : users) {
             user.setReservations(&reservations);
         }
