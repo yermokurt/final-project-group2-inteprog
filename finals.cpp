@@ -205,6 +205,7 @@ void User::payForReservation() {
     cout << left << setw(15) << "Car ID" << setw(15) << "Start Date" << setw(15) << "End Date"
          << setw(15) << "Price" << setw(15) << "Status" << setw(15) << "Payment" << endl;
     cout << string(90, '-') << endl;
+    vector<string> unpaidCarIds;
     for (const auto& res : *reservations) {
         if (res.getUsername() == username && res.getPaymentStatus() == "Pending" && toUpper(res.getStatus()) == "CONFIRMED") {
             found = true;
@@ -214,6 +215,7 @@ void User::payForReservation() {
                  << setw(15) << res.getPrice()
                  << setw(15) << res.getStatus()
                  << setw(15) << res.getPaymentStatus() << endl;
+            unpaidCarIds.push_back(toUpper(res.getCarId()));
         }
     }
     if (!found) {
@@ -221,11 +223,17 @@ void User::payForReservation() {
         return;
     }
     string carId;
-    cout << "Enter Car ID to pay for: ";
-    cin >> carId;
-    carId = toUpper(carId);
+    while (true) {
+        cout << "Enter Car ID to pay for: ";
+        cin >> carId;
+        if (find(unpaidCarIds.begin(), unpaidCarIds.end(), toUpper(carId)) != unpaidCarIds.end()) {
+            break;
+        } else {
+            cout << "Car ID not found in your unpaid confirmed reservations. Please try again.\n";
+        }
+    }
     for (auto& res : *reservations) {
-        if (res.getUsername() == username && toUpper(res.getCarId()) == carId && res.getPaymentStatus() == "Pending" && toUpper(res.getStatus()) == "CONFIRMED") {
+        if (res.getUsername() == username && toUpper(res.getCarId()) == toUpper(carId) && res.getPaymentStatus() == "Pending" && toUpper(res.getStatus()) == "CONFIRMED") {
             int payMethod;
             cout << "Select payment method:\n1. Cash\n2. Card\nChoose: ";
             payMethod = getNumericInput("");
@@ -744,17 +752,38 @@ void Admin::viewAllReservations() const {
 void Admin::updateReservationStatus(const string& carId, const string& username, const string& newStatus, vector<Car>& carsVec, vector<Reservation>& reservations) {
     string carIdUpper = toUpper(carId);
     string usernameUpper = toUpper(username);
+
+    // Only accept valid statuses (case-insensitive)
+    string statusUpper = toUpper(newStatus);
+    if (statusUpper != "PENDING" && statusUpper != "CONFIRMED" && statusUpper != "CANCELLED") {
+        cout << "Invalid status. Only Pending, Confirmed, or Cancelled are allowed.\n";
+        return;
+    }
+
+    // Check if username exists in reservations for this car
+    bool userFound = false;
+    for (const auto& res : reservations) {
+        if (toUpper(res.getCarId()) == carIdUpper && toUpper(res.getUsername()) == usernameUpper) {
+            userFound = true;
+            break;
+        }
+    }
+    if (!userFound) {
+        cout << "Username not found for this Car ID.\n";
+        return;
+    }
+
     for (auto& res : reservations) {
         if (toUpper(res.getCarId()) == carIdUpper && toUpper(res.getUsername()) == usernameUpper) {
-            res.setStatus(newStatus);
+            res.setStatus(statusUpper[0] + string(statusUpper.begin() + 1, statusUpper.end())); // Capitalize first letter
             // Update car status accordingly
             for (auto& car : carsVec) {
                 if (toUpper(car.getId()) == carIdUpper) {
-                    if (newStatus == "Confirmed") {
+                    if (statusUpper == "CONFIRMED") {
                         car.setStatus("Rented");
-                    } else if (newStatus == "Cancelled") {
+                    } else if (statusUpper == "CANCELLED") {
                         car.setStatus("Available");
-                    } else if (newStatus == "Pending") {
+                    } else if (statusUpper == "PENDING") {
                         car.setStatus("Reserved");
                     }
                     saveCarsToFile(carsVec);
@@ -830,7 +859,7 @@ int getNumericInputInRange(const string& prompt, int min, int max) {
 }
 
 // --- User Menu with Cancel Reservation and Change Password ---
-void userMenu(User& user, vector<Car>& cars) {
+void userMenu(User& user, vector<Car>& cars, vector<User>& users) {
     int choice;
     do {
         cout << "\nUser Menu:\n1. View Available Cars\n2. Rent Car\n3. View My Reservations\n4. Cancel Reservation\n5. Change Password\n6. Pay for Reservation\n7. Logout\nChoose: ";
@@ -849,6 +878,7 @@ void userMenu(User& user, vector<Car>& cars) {
             cout << "Enter new password: ";
             cin >> newPass;
             user.changePassword(newPass);
+            saveUsersToFile(users); // Save after password change
         } else if (choice == 6) {
             user.payForReservation();
         }
@@ -918,54 +948,80 @@ void adminMenu(Admin& admin, vector<User>& users, vector<Reservation>& reservati
         } else if (choice == 6) {
             admin.viewAllReservations();
         // ...existing code...
-        } else if (choice == 7) {
-            cout << "\nPending Reservation Requests:\n";
-            cout << left << setw(15) << "Car ID"
-                 << setw(15) << "Username"
-                 << setw(15) << "Start Date"
-                 << setw(15) << "End Date"
-                 << setw(15) << "Price"
-                 << setw(15) << "Status"
-                 << setw(15) << "Payment" << endl;
-            cout << string(105, '-') << endl;
-            vector<string> pendingCarIds;
-            bool found = false;
-            for (const auto& res : reservations) {
-                if (res.getStatus() == "Pending") {
-                    found = true;
-                    cout << left << setw(15) << res.getCarId()
-                         << setw(15) << res.getUsername()
-                         << setw(15) << res.getStartDate()
-                         << setw(15) << res.getEndDate()
-                         << setw(15) << res.getPrice()
-                         << setw(15) << res.getStatus()
-                         << setw(15) << res.getPaymentStatus() << endl;
-                    pendingCarIds.push_back(toUpper(res.getCarId()));
-                }
-            }
-            if (!found) {
-                cout << "No pending reservation requests.\n";
-                continue;
-            }
-            string carId, username, status;
-            // Only accept Car ID that is in pending reservations
-            while (true) {
-                cout << "Enter Car ID of reservation: ";
-                cin >> carId;
-                if (find(pendingCarIds.begin(), pendingCarIds.end(), toUpper(carId)) != pendingCarIds.end()) {
-                    break;
-                } else {
-                    cout << "Car ID not found in pending reservations. Please try again.\n";
-                }
-            }
-            cout << "Enter Username of reservation: ";
-            cin >> username;
-            cout << "Enter new status (Pending/Confirmed/Cancelled): ";
-            cin >> status;
-            admin.updateReservationStatus(carId, username, status, cars, reservations);
-            cars = admin.getCars();
-            for (auto& user : users) user.setCars(&cars);
+        }else if (choice == 7) {
+    cout << "\nPending Reservation Requests:\n";
+    cout << left << setw(15) << "Car ID"
+         << setw(15) << "Username"
+         << setw(15) << "Start Date"
+         << setw(15) << "End Date"
+         << setw(15) << "Price"
+         << setw(15) << "Status"
+         << setw(15) << "Payment" << endl;
+    cout << string(105, '-') << endl;
+    vector<string> pendingCarIds;
+    vector<string> pendingUsernames;
+    bool found = false;
+    for (const auto& res : reservations) {
+        if (res.getStatus() == "Pending") {
+            found = true;
+            cout << left << setw(15) << res.getCarId()
+                 << setw(15) << res.getUsername()
+                 << setw(15) << res.getStartDate()
+                 << setw(15) << res.getEndDate()
+                 << setw(15) << res.getPrice()
+                 << setw(15) << res.getStatus()
+                 << setw(15) << res.getPaymentStatus() << endl;
+            pendingCarIds.push_back(toUpper(res.getCarId()));
+            pendingUsernames.push_back(toUpper(res.getUsername()));
         }
+    }
+    if (!found) {
+        cout << "No pending reservation requests.\n";
+        continue;
+    }
+    string carId, username, status;
+    // Only accept Car ID that is in pending reservations
+    while (true) {
+        cout << "Enter Car ID of reservation: ";
+        cin >> carId;
+        if (find(pendingCarIds.begin(), pendingCarIds.end(), toUpper(carId)) != pendingCarIds.end()) {
+            break;
+        } else {
+            cout << "Car ID not found in pending reservations. Please try again.\n";
+        }
+    }
+    // Only accept Username that matches the Car ID in pending reservations
+    while (true) {
+        cout << "Enter Username of reservation: ";
+        cin >> username;
+        bool userFound = false;
+        for (const auto& res : reservations) {
+            if (toUpper(res.getCarId()) == toUpper(carId) && toUpper(res.getUsername()) == toUpper(username) && res.getStatus() == "Pending") {
+                userFound = true;
+                break;
+            }
+        }
+        if (userFound) {
+            break;
+        } else {
+            cout << "Username not found for this Car ID in pending reservations. Please try again.\n";
+        }
+    }
+    // Only accept valid status (Pending/Confirmed/Cancelled, case-insensitive)
+    while (true) {
+        cout << "Enter new status (Pending/Confirmed/Cancelled): ";
+        cin >> status;
+        string statusUpper = toUpper(status);
+        if (statusUpper == "PENDING" || statusUpper == "CONFIRMED" || statusUpper == "CANCELLED") {
+            break;
+        } else {
+            cout << "Invalid status. Only Pending, Confirmed, or Cancelled are allowed.\n";
+        }
+    }
+    admin.updateReservationStatus(carId, username, status, cars, reservations);
+    cars = admin.getCars();
+    for (auto& user : users) user.setCars(&cars);
+}
         else if (choice == 8) {
             admin.viewUsers(users);
         } else if (choice == 9) {
@@ -1069,50 +1125,51 @@ Admin& admin = adminSingleton->getAdmin();
 admin.getCars() = cars;
 admin.setReservations(&reservations); // <-- Use this line
         for (auto& user : users) {
-            user.setReservations(&reservations);
-        }
+    	user.setReservations(&reservations);
+}
 
-        int mainOption;
+       int mainOption;
+do {
+    cout << "\nWelcome to Car Rental System\n";
+    cout << "1. Login as User\n";
+    cout << "2. Login as Admin\n";
+    cout << "3. Exit\n";
+    mainOption = getNumericInputInRange("Choose: ", 1, 3);
+
+    if (mainOption == 1) {
+        int userOption;
         do {
-            cout << "\nWelcome to Car Rental System\n";
-            cout << "1. Login as User\n";
-            cout << "2. Login as Admin\n";
-            cout << "3. Exit\n";
-            mainOption = getNumericInputInRange("Choose: ", 1, 3);
+            cout << "\nUser Menu:\n";
+            cout << "1. Register\n";
+            cout << "2. Login\n";
+            cout << "3. Back\n";
+            userOption = getNumericInputInRange("Choose: ", 1, 3);
 
-            if (mainOption == 1) {
-                int userOption;
-                do {
-                    cout << "\nUser Menu:\n";
-                    cout << "1. Register\n";
-                    cout << "2. Login\n";
-                    cout << "3. Back\n";
-                    userOption = getNumericInputInRange("Choose: ", 1, 3);
-
-                    if (userOption == 1) {
-                        registerUser(users, cars);
-                    } else if (userOption == 2) {
-                        string username, password;
-                        cout << "Username: ";
-                        cin >> username;
-                        cout << "Password: ";
-                        cin >> password;
-                        bool found = false;
-                        for (auto& user : users) {
-                            if (toUpper(user.getUsername()) == toUpper(username) && user.getPassword() == password) {
-                                found = true;
-                                cout << "Login successful.\n";
-                                user.setReservations(&reservations);
-                                userMenu(user, cars);
-                                break;
-                            }
-                        }
-                        if (!found) {
-                            cout << "Invalid credentials.\n";
-                            break;
-                        }
+            if (userOption == 1) {
+                registerUser(users, cars);
+            } else if (userOption == 2) {
+                string username, password;
+                cout << "Username: ";
+                cin >> username;
+                cout << "Password: ";
+                cin >> password;
+                bool found = false;
+                for (auto& user : users) {
+                    if (toUpper(user.getUsername()) == toUpper(username) && user.getPassword() == password) {
+                        found = true;
+                        cout << "Login successful.\n";
+                        user.setReservations(&reservations);
+                        userMenu(user, cars, users); // Pass users here
+                        break;
                     }
-                } while (userOption != 3);
+                }
+                if (!found) {
+                    cout << "Invalid credentials.\n";
+                    break;
+                }
+            }
+        } while (userOption != 3);
+
 
             } else if (mainOption == 2) {
                 string adminPass;
