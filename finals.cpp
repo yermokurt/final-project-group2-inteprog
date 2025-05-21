@@ -305,18 +305,40 @@ void cancelReservationWithPrompt(User& user, vector<Car>& cars) {
 
     while (true) {
         string carId;
-        cout << "Enter Car ID to cancel reservation (or 0 to back): ";
-        cin >> carId;
-        if (carId == "0") return;
+        bool valid = false;
+        while (!valid) {
+            cout << "Enter Car ID to cancel reservation (or 0 to back): ";
+            getline(cin >> ws, carId);
+            if (carId == "0") return;
+            if (carId.empty() || carId.find(' ') != string::npos) {
+                cout << "Invalid input. Please enter a single Car ID or 0 to back.\n";
+                continue;
+            }
+            // Check if Car ID exists in user's active reservations
+            bool exists = false;
+            for (const auto& res : *(user.getReservations())) {
+                if (toUpper(res.getCarId()) == toUpper(carId) &&
+                    res.getUsername() == user.getUsername() &&
+                    res.getStatus() != "Cancelled") {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                cout << "Car ID not found in your active reservations. Please try again.\n";
+                continue;
+            }
+            valid = true;
+        }
 
         // Confirm cancellation
         cout << "Are you sure you want to cancel reservation for Car ID " << carId << "? (y/n): ";
         string confirm;
-        cin >> confirm;
-        if (toUpper(confirm) == "Y") {
+        getline(cin >> ws, confirm); // Read the whole line, skip whitespace
+        if (confirm.length() == 1 && (confirm == "y" || confirm == "Y")) {
             user.cancelReservation(carId, cars);
             break;
-        } else if (toUpper(confirm) == "N") {
+        } else if (confirm.length() == 1 && (confirm == "n" || confirm == "N")) {
             cout << "Cancellation aborted.\n";
             break;
         } else {
@@ -335,7 +357,7 @@ public:
     void updateCar(const string& id, const string& newModel);
     void deleteCar(const string& id);
     void filterCarsByModel(const string& keyword) const;
-    void viewAllReservations() const;
+    void viewAllReservations();
     void updateReservationStatus(const string& carId, const string& username, const string& newStatus, vector<Car>& cars, vector<Reservation>& reservations);
     void viewUsers(const vector<User>& users) const;
     void deleteUser(vector<User>& users, const string& username);
@@ -733,12 +755,27 @@ void Admin::filterCarsByModel(const string& keyword) const {
     }
 }
 
-void Admin::viewAllReservations() const {
+void Admin::viewAllReservations(){
     cout << "\nAll Reservations:\n";
     cout << left << setw(15) << "Car ID" << setw(15) << "Username" << setw(15) << "Start Date"
          << setw(15) << "End Date" << setw(15) << "Price" << setw(15) << "Status" << setw(15) << "Payment" << endl;
     cout << string(105, '-') << endl;
-    for (const auto& res : *reservations) { // <-- dereference pointer here
+    for (auto& res : *reservations) {
+        // If reservation is cancelled, set payment status and car status
+        if (toUpper(res.getStatus()) == "CANCELLED") {
+            if (res.getPaymentStatus() != "Cancelled") {
+                res.setPaymentStatus("Cancelled");
+            }
+            // Set car status to Available
+            for (auto& car : cars) {
+                if (toUpper(car.getId()) == toUpper(res.getCarId())) {
+                    car.setStatus("Available");
+                    break;
+                }
+            }
+            saveCarsToFile(cars);
+            saveReservationsToFile(*reservations);
+        }
         cout << left << setw(15) << res.getCarId()
              << setw(15) << res.getUsername()
              << setw(15) << res.getStartDate()
@@ -894,25 +931,107 @@ void adminMenu(Admin& admin, vector<User>& users, vector<Reservation>& reservati
         choice = getNumericInputInRange("", 1, 11);
         if (choice == 1) {
             admin.viewCars();
-        } else if (choice == 2) {
+                        } else if (choice == 2) {
             admin.viewCars();
             string id, model, plate;
-            cout << "Enter new Car ID: ";
-            cin >> id;
-            cout << "Enter new Car Model: ";
-            cin >> model;
-            cout << "Enter Plate Number: ";
-            cin >> plate;
+            // Repeat until valid Car ID or 0
+            while (true) {
+                cout << "Enter new Car ID (or 0 to go back): ";
+                getline(cin >> ws, id);
+                if (id == "0") break; // Go back to menu
+                if (id.empty() || id.find(' ') != string::npos) {
+                    cout << "Invalid input. Please enter a single Car ID or 0 to go back.\n";
+                    continue;
+                }
+                // Check for duplicate Car ID
+                bool exists = false;
+                for (const auto& car : admin.getCars()) {
+                    if (toUpper(car.getId()) == toUpper(id)) {
+                        cout << "Car ID already exists. Please enter a different Car ID.\n";
+                        exists = true;
+                        break;
+                    }
+                }
+                if (exists) continue;
+                break; // Valid input
+            }
+            if (id == "0") continue; // Go back to menu
+
+            // Repeat until valid Model or 0
+            while (true) {
+                cout << "Enter new Car Model (or 0 to go back): ";
+                getline(cin >> ws, model);
+                if (model == "0") break;
+                if (model.empty() || model.find(' ') != string::npos) {
+                    cout << "Invalid input. Please enter a single Model or 0 to go back.\n";
+                    continue;
+                }
+                break;
+            }
+            if (model == "0") continue;
+
+            // Repeat until valid Plate Number or 0
+            while (true) {
+                cout << "Enter Plate Number (or 0 to go back): ";
+                getline(cin >> ws, plate);
+                if (plate == "0") break;
+                if (plate.empty() || plate.find(' ') != string::npos) {
+                    cout << "Invalid input. Please enter a single Plate Number or 0 to go back.\n";
+                    continue;
+                }
+                // Check for duplicate Plate Number
+                bool exists = false;
+                for (const auto& car : admin.getCars()) {
+                    if (car.getPlateNumber() == plate) {
+                        cout << "Plate Number already exists. Please enter a different Plate Number.\n";
+                        exists = true;
+                        break;
+                    }
+                }
+                if (exists) continue;
+                break;
+            }
+            if (plate == "0") continue;
+
             admin.addCar(id, model, plate);
             cars = admin.getCars();
             for (auto& user : users) user.setCars(&cars);
-        } else if (choice == 3) {
+                        } else if (choice == 3) {
             admin.viewCars();
             string id, model;
-            cout << "Enter Car ID to update: ";
-            cin >> id;
-            cout << "Enter new Model: ";
-            cin >> model;
+            // Repeat until valid Car ID or 0
+            while (true) {
+                cout << "Enter Car ID to update (or 0 to go back): ";
+                getline(cin >> ws, id);
+                if (id == "0") break; // Go back to menu
+                if (id.empty() || id.find(' ') != string::npos) {
+                    cout << "Invalid input. Please enter a single Car ID or 0 to go back.\n";
+                    continue;
+                }
+                // Check if Car ID exists
+                bool exists = false;
+                for (const auto& car : admin.getCars()) {
+                    if (toUpper(car.getId()) == toUpper(id)) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) {
+                    cout << "Car ID not found. Please enter a valid Car ID or 0 to go back.\n";
+                    continue;
+                }
+                break; // Valid input
+            }
+            if (id == "0") continue; // Go back to menu
+
+            // Prompt for new model
+            cout << "Enter new Model (or 0 to go back): ";
+            getline(cin >> ws, model);
+            if (model == "0") continue; // Go back to menu
+            if (model.empty() || model.find(' ') != string::npos) {
+                cout << "Invalid input. Please enter a single Model or 0 to go back.\n";
+                continue;
+            }
             admin.updateCar(id, model);
             cars = admin.getCars();
             for (auto& user : users) user.setCars(&cars);
@@ -1024,7 +1143,7 @@ void adminMenu(Admin& admin, vector<User>& users, vector<Reservation>& reservati
 }
         else if (choice == 8) {
             admin.viewUsers(users);
-        } else if (choice == 9) {
+                } else if (choice == 9) {
             // Enhanced: Loop for multiple user deletions
             while (true) {
                 if (users.empty()) {
@@ -1046,9 +1165,16 @@ void adminMenu(Admin& admin, vector<User>& users, vector<Reservation>& reservati
                     break;
                 }
                 string more;
-                cout << "Do you want to delete another user? (y/n): ";
-                cin >> more;
-                if (toUpper(more) != "Y") break;
+                while (true) {
+                    cout << "Do you want to delete another user? (y/n): ";
+                    cin >> more;
+                    if (more == "y" || more == "Y" || more == "n" || more == "N") {
+                        break;
+                    } else {
+                        cout << "Invalid input. Please enter y or n.\n";
+                    }
+                }
+                if (more == "n" || more == "N") break;
             }
         } else if (choice == 10) {
             reportMostRentedCar(reservations);
