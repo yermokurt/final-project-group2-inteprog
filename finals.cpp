@@ -11,6 +11,7 @@
 #include <map>
 #include <cctype>
 #include <limits>
+#include <conio.h>
 
 using namespace std;
 
@@ -19,6 +20,24 @@ string toUpper(const string& s) {
     string out = s;
     transform(out.begin(), out.end(), out.begin(), ::toupper);
     return out;
+}
+
+string getPasswordMasked() {
+    string password;
+    char ch;
+    while ((ch = _getch()) != '\r') { // '\r' is Enter key
+        if (ch == '\b') { // Handle backspace
+            if (!password.empty()) {
+                cout << "\b \b";
+                password.pop_back();
+            }
+        } else {
+            password += ch;
+            cout << '*';
+        }
+    }
+    cout << endl;
+    return password;
 }
 
 // Helper: Get numeric input with validation
@@ -448,7 +467,7 @@ void registerUser(vector<User>& users, vector<Car>& cars) {
     }
 
     cout << "Enter new password: ";
-    getline(cin >> ws, password);
+    password = getPasswordMasked();
     if (password.empty() || password.find(' ') != string::npos) {
         cout << "Password cannot be empty or contain spaces.\n";
         return;
@@ -913,7 +932,7 @@ void userMenu(User& user, vector<Car>& cars, vector<User>& users) {
         } else if (choice == 5) {
             string newPass;
             cout << "Enter new password: ";
-            getline(cin >> ws, newPass);
+            newPass = getPasswordMasked();
             if (newPass.empty() || newPass.find(' ') != string::npos) {
                 cout << "Password cannot be empty or contain spaces.\n";
                 break;
@@ -1282,10 +1301,10 @@ do {
                 cout << "Username: ";
                 cin >> username;
                 cout << "Password: ";
-                getline(cin >> ws, password);
+                password = getPasswordMasked();
                 if (password.find(' ') != string::npos) {
                     cout << "Password cannot contain spaces.\n";
-                    break; // or return, depending on your logic
+                    break;
                 }
                 bool found = false;
                 for (auto& user : users) {
@@ -1308,7 +1327,7 @@ do {
             } else if (mainOption == 2) {
                 string adminPass;
                 cout << "Enter admin password: ";
-                getline(cin >> ws, adminPass);
+                adminPass = getPasswordMasked();
                 if (adminPass == "group2finalproject") {
                     cout << "Admin login successful.\n";
                     adminMenu(admin, users, reservations, cars);
