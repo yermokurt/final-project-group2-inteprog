@@ -448,9 +448,9 @@ void registerUser(vector<User>& users, vector<Car>& cars) {
     }
 
     cout << "Enter new password: ";
-    cin >> password;
-    if (password.empty()) {
-        cout << "Password cannot be empty.\n";
+    getline(cin >> ws, password);
+    if (password.empty() || password.find(' ') != string::npos) {
+        cout << "Password cannot be empty or contain spaces.\n";
         return;
     }
 
@@ -913,9 +913,13 @@ void userMenu(User& user, vector<Car>& cars, vector<User>& users) {
         } else if (choice == 5) {
             string newPass;
             cout << "Enter new password: ";
-            cin >> newPass;
+            getline(cin >> ws, newPass);
+            if (newPass.empty() || newPass.find(' ') != string::npos) {
+                cout << "Password cannot be empty or contain spaces.\n";
+                break;
+            }
             user.changePassword(newPass);
-            saveUsersToFile(users); // Save after password change
+            saveUsersToFile(users);
         } else if (choice == 6) {
             user.payForReservation();
         }
@@ -1278,7 +1282,11 @@ do {
                 cout << "Username: ";
                 cin >> username;
                 cout << "Password: ";
-                cin >> password;
+                getline(cin >> ws, password);
+                if (password.find(' ') != string::npos) {
+                    cout << "Password cannot contain spaces.\n";
+                    break; // or return, depending on your logic
+                }
                 bool found = false;
                 for (auto& user : users) {
                     if (toUpper(user.getUsername()) == toUpper(username) && user.getPassword() == password) {
@@ -1300,7 +1308,7 @@ do {
             } else if (mainOption == 2) {
                 string adminPass;
                 cout << "Enter admin password: ";
-                cin >> adminPass;
+                getline(cin >> ws, adminPass);
                 if (adminPass == "group2finalproject") {
                     cout << "Admin login successful.\n";
                     adminMenu(admin, users, reservations, cars);
